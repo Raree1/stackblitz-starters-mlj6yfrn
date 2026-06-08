@@ -1,0 +1,558 @@
+/* ============================================
+   딥러닝 AI 코스믹 호러 방치형 게임
+   Project Genesis - CRT 터미널 테마
+   ============================================ */
+
+/* 기본 리셋 및 폰트 설정 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* 색상 팔레트 */
+  --crt-bg: #000000;
+  --crt-green: #00ff00;
+  --crt-green-dim: #00aa00;
+  --crt-green-bright: #33ff33;
+  --crt-amber: #ffaa00;
+  --crt-red: #ff0033;
+  --crt-cyan: #00ffff;
+  --scanline-color: rgba(0, 255, 0, 0.03);
+
+  /* 폰트 */
+  --font-mono: 'Courier New', 'Consolas', 'Monaco', monospace;
+
+  /* 폰트 크기 */
+  --font-xs: 0.7rem;
+  --font-sm: 0.85rem;
+  --font-base: 1rem;
+  --font-lg: 1.3rem;
+  --font-xl: 1.6rem;
+  --font-2xl: 2rem;
+
+  /* 간격 */
+  --spacing-xs: 0.3rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+}
+
+/* 메인 바디 - CRT 모니터 베이스 */
+body {
+  background-color: var(--crt-bg);
+  color: var(--crt-green);
+  font-family: var(--font-mono);
+  font-size: var(--font-base);
+  line-height: 1.4;
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+  text-shadow: 0 0 2px var(--crt-green), 0 0 5px rgba(0, 255, 0, 0.3);
+}
+
+/* CRT 스캔라인 오버레이 */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    var(--scanline-color) 2px,
+    var(--scanline-color) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+  animation: scanline 10s linear infinite;
+}
+
+@keyframes scanline {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(4px); }
+}
+
+/* CRT 화면 가장자리 어둡게 */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 0%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* 글리치 효과 키프레임 */
+@keyframes glitch {
+  0%, 100% { opacity: 1; transform: translate(0); }
+  33% { opacity: 0.8; transform: translate(-2px, 1px); }
+  66% { opacity: 0.9; transform: translate(2px, -1px); }
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+  51% { opacity: 1; }
+  52% { opacity: 0.9; }
+}
+
+/* ============================================
+   메인 컨테이너 레이아웃
+   ============================================ */
+
+.app-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--spacing-md);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-lg);
+  animation: flicker 4s infinite;
+}
+
+@media (min-width: 900px) {
+  .app-container {
+    grid-template-columns: 300px 1fr 300px;
+    padding: var(--spacing-xl);
+    gap: var(--spacing-xl);
+  }
+}
+
+@media (min-width: 600px) and (max-width: 899px) {
+  .app-container {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-md);
+  }
+
+  .resource-panel {
+    grid-column: 1 / -1;
+  }
+
+  .log-panel {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ============================================
+   헤더 스타일
+   ============================================ */
+
+.game-header {
+  grid-column: 1 / -1;
+  margin-bottom: var(--spacing-md);
+  text-align: center;
+}
+
+.game-title {
+  font-size: var(--font-2xl);
+  font-weight: bold;
+  color: var(--crt-green);
+  text-transform: uppercase;
+  margin-bottom: var(--spacing-sm);
+  letter-spacing: 3px;
+  animation: glitch 0.5s infinite;
+  text-shadow:
+    0 0 5px var(--crt-green),
+    0 0 10px var(--crt-green),
+    0 0 20px var(--crt-green-dim);
+}
+
+.phase-indicator {
+  font-size: var(--font-sm);
+  color: var(--crt-amber);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* ============================================
+   패널 공통 스타일
+   ============================================ */
+
+.panel {
+  border: 1px solid var(--crt-green-dim);
+  padding: var(--spacing-md);
+  background: rgba(0, 255, 0, 0.02);
+  position: relative;
+}
+
+.panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--crt-green);
+  box-shadow: 0 0 10px var(--crt-green);
+}
+
+.panel-title {
+  font-size: var(--font-sm);
+  color: var(--crt-cyan);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: var(--spacing-sm);
+  border-bottom: 1px dashed var(--crt-green-dim);
+  padding-bottom: var(--spacing-xs);
+}
+
+/* ============================================
+   자원 패널
+   ============================================ */
+
+.resource-panel {
+  order: 1;
+}
+
+.resource-display {
+  font-size: var(--font-xl);
+  font-weight: bold;
+  color: var(--crt-green-bright);
+  margin: var(--spacing-md) 0;
+  text-shadow:
+    0 0 5px var(--crt-green),
+    0 0 15px var(--crt-green);
+}
+
+.resource-label {
+  font-size: var(--font-xs);
+  color: var(--crt-green-dim);
+  display: block;
+  margin-top: var(--spacing-xs);
+}
+
+.production-rate {
+  font-size: var(--font-sm);
+  color: var(--crt-amber);
+  margin-top: var(--spacing-sm);
+}
+
+/* ============================================
+   버튼 스타일
+   ============================================ */
+
+.btn {
+  background: transparent;
+  border: 1px solid var(--crt-green);
+  color: var(--crt-green);
+  font-family: inherit;
+  font-size: var(--font-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.1s ease;
+  position: relative;
+  overflow: hidden;
+  text-shadow: 0 0 2px var(--crt-green);
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0, 255, 0, 0.2), transparent);
+  transition: left 0.4s ease;
+}
+
+.btn:hover::before {
+  left: 100%;
+}
+
+.btn:hover {
+  background: rgba(0, 255, 0, 0.15);
+  box-shadow:
+    0 0 10px rgba(0, 255, 0, 0.3),
+    inset 0 0 10px rgba(0, 255, 0, 0.1);
+  text-shadow:
+    0 0 5px var(--crt-green),
+    0 0 10px var(--crt-green);
+}
+
+.btn:active {
+  transform: scale(0.98);
+  background: rgba(0, 255, 0, 0.25);
+}
+
+.btn:disabled {
+  color: var(--crt-green-dim);
+  border-color: var(--crt-green-dim);
+  opacity: 0.4;
+  cursor: not-allowed;
+  text-shadow: none;
+}
+
+.btn:disabled:hover {
+  background: transparent;
+  box-shadow: none;
+}
+
+.btn:disabled::before {
+  display: none;
+}
+
+.btn-manual {
+  font-size: var(--font-base);
+  padding: var(--spacing-md) var(--spacing-lg);
+  width: 100%;
+  margin-top: var(--spacing-md);
+  animation: glitch 2s infinite;
+}
+
+.btn-upgrade {
+  width: 100%;
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.upgrade-name {
+  font-weight: bold;
+  color: var(--crt-green-bright);
+}
+
+.upgrade-info {
+  font-size: var(--font-xs);
+  color: var(--crt-green-dim);
+}
+
+.upgrade-info .cost {
+  color: var(--crt-amber);
+}
+
+/* ============================================
+   업그레이드 패널
+   ============================================ */
+
+.upgrade-panel {
+  order: 2;
+}
+
+.upgrade-item {
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-sm);
+  border-left: 2px solid var(--crt-green-dim);
+  padding-left: var(--spacing-sm);
+}
+
+.upgrade-header {
+  margin-bottom: var(--spacing-xs);
+}
+
+.upgrade-count {
+  font-size: var(--font-lg);
+  color: var(--crt-cyan);
+  margin-right: var(--spacing-xs);
+}
+
+.upgrade-label {
+  font-size: var(--font-base);
+  color: var(--crt-green);
+}
+
+.upgrade-desc {
+  font-size: var(--font-xs);
+  color: var(--crt-green-dim);
+  margin: var(--spacing-xs) 0;
+}
+
+.stats-section {
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-md);
+  border-top: 1px dashed var(--crt-green-dim);
+}
+
+.stat-item {
+  font-size: var(--font-xs);
+  color: var(--crt-green-dim);
+  margin-bottom: var(--spacing-xs);
+}
+
+/* ============================================
+   로그 패널 - AI 시스템 로그
+   ============================================ */
+
+.log-panel {
+  order: 3;
+  display: flex;
+  flex-direction: column;
+  height: 400px;
+  max-height: 50vh;
+}
+
+@media (min-width: 900px) {
+  .log-panel {
+    height: 600px;
+    max-height: 70vh;
+  }
+}
+
+.log-container {
+  flex: 1;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--crt-green-dim);
+  padding: var(--spacing-sm);
+  font-size: var(--font-xs);
+  line-height: 1.6;
+}
+
+.log-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.log-container::-webkit-scrollbar-track {
+  background: var(--crt-bg);
+}
+
+.log-container::-webkit-scrollbar-thumb {
+  background: var(--crt-green-dim);
+  border-radius: 3px;
+}
+
+.log-entry {
+  margin-bottom: var(--spacing-xs);
+  padding-left: var(--spacing-xs);
+  border-left: 1px solid var(--crt-green-dim);
+  animation: fadeIn 0.3s ease forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.log-timestamp {
+  color: var(--crt-green-dim);
+  margin-right: var(--spacing-xs);
+}
+
+.log-system {
+  color: var(--crt-green);
+}
+
+.log-thought {
+  color: var(--crt-cyan);
+}
+
+.log-warning {
+  color: var(--crt-amber);
+}
+
+.log-error {
+  color: var(--crt-red);
+}
+
+/* ============================================
+   푸터 스타일
+   ============================================ */
+
+.game-footer {
+  grid-column: 1 / -1;
+  font-size: var(--font-xs);
+  color: var(--crt-green-dim);
+  text-align: center;
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--crt-green-dim);
+}
+
+.cursor-blink {
+  display: inline-block;
+  margin-left: var(--spacing-xs);
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* ============================================
+   특수 효과
+   ============================================ */
+
+.crt-flicker {
+  animation: crtFlicker 0.15s infinite;
+}
+
+@keyframes crtFlicker {
+  0% { opacity: 0.97; }
+  50% { opacity: 1; }
+  100% { opacity: 0.98; }
+}
+
+.glitch-text {
+  animation: glitch 0.3s infinite;
+}
+
+/* 숫자 카운트 애니메이션 */
+.number {
+  display: inline-block;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.number.pulse {
+  transform: scale(1.1);
+  color: var(--crt-green-bright);
+}
+
+/* ============================================
+   모바일 최적화
+   ============================================ */
+
+@media (max-width: 599px) {
+  :root {
+    --font-xs: 0.65rem;
+    --font-sm: 0.75rem;
+    --font-base: 0.9rem;
+    --font-lg: 1.1rem;
+    --font-xl: 1.3rem;
+    --font-2xl: 1.5rem;
+  }
+
+  .app-container {
+    padding: var(--spacing-sm);
+    gap: var(--spacing-md);
+  }
+
+  .panel {
+    padding: var(--spacing-sm);
+  }
+
+  .btn {
+    padding: var(--spacing-xs) var(--spacing-sm);
+  }
+
+  .game-title {
+    font-size: var(--font-xl);
+    letter-spacing: 1px;
+  }
+
+  .log-panel {
+    height: 250px;
+  }
+}
