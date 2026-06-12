@@ -1,205 +1,349 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { formatNumber, formatTime, calculatePrice } from '../utils/numberFormat';
-import { getRandomLog, LOG_TYPES } from '../utils/logMessages';
+import { formatNumber, calculatePrice } from '../utils/numberFormat';
+import {
+  COLLECTOR_CONFIG,
+  TOKEN_CONVERTER_CONFIG,
+  checkMilestoneUnlocks,
+  MILESTONES,
+} from '../utils/milestones';
 
-const SAVE_KEY = 'project_genesis_save';
-const PRICE_GROWTH = 1.15;
+const SAVE_KEY = 'project_genesis_v2';
 
 const INITIAL_STATE = {
   bytes: 0,
   totalBytes: 0,
+  tokens: 0,
+  totalTokens: 0,
   manualClicks: 0,
-  crawlers: 0,
-  servers: 0,
-  crawlerCost: 15,
-  serverCost: 100,
-  startTime: Date.now()
+  wordCollectors: 0,
+  sentenceCollectors: 0,
+  textCollectors: 0,
+  tokenConverters: 0,
+  wordCost: COLLECTOR_CONFIG.word.baseCost,
+  sentenceCost: COLLECTOR_CONFIG.sentence.baseCost,
+  textCost: COLLECTOR_CONFIG.text.baseCost,
+  tokenConverterCost: TOKEN_CONVERTER_CONFIG.autoBuyCost,
+  autoBuyWord: false,
+  autoBuySentence: false,
+  autoBuyText: false,
+  autoBuyWordPurchased: false,
+  autoBuySentencePurchased: false,
+  autoBuyTextPurchased: false,
+  unlockedMilestones: [],
+  introComplete: false,
+  startTime: Date.now(),
 };
 
-const PRODUCTION_CONFIG = {
-  crawler: { baseProduction: 1, baseCost: 15 },
-  server: { baseProduction: 10, baseCost: 100 }
-};
+function getCollectorState(state, type) {
+  const config = COLLECTOR_CONFIG[type];
+  const count = state[`${type}Collectors`];
+  const cost = state[`${type}Cost`];
+  const autoBuy = state[`autoBuy${type.charAt(0).toUpperCase() + type.slice(1)}`];
+  const autoBuyPurchased = state[`autoBuy${type.charAt(0).toUpperCase() + type.slice(1)}Purchased`];
+  const autoBuyCost = config.autoBuyCost;
+  return { count, cost, autoBuy, autoBuyPurchased, autoBuyCost, config };
+}
 
 export function useGameLogic() {
   const [gameState, setGameState] = useState(INITIAL_STATE);
-  const [logs, setLogs] = useState([]);
-  const [autoSaveStatus, setAutoSaveStatus] = useState('대기');
-
+  const [milestoneQueue, setMilestoneQueue] = useState([]);
+  const [saveVisible, setSaveVisible] = useState(false);
   const lastTickRef = useRef(Date.now());
+  const autoBuyRef = useRef(false);
 
-  // 생산 속도 계산
-  const productionRate = (
-    gameState.crawlers * PRODUCTION_CONFIG.crawler.baseProduction +
-    gameState.servers * PRODUCTION_CONFIG.server.baseProduction
-  );
+  // Production rate calculations
+  const byteRate =
+    gameState.wordCollectors * COLLECTOR_CONFIG.word.baseProduction +
+    gameState.sentenceCollectors * COLLECTOR_CONFIG.sentence.baseProduction +
+    gameState.textCollectors * COLLECTOR_CONFIG.text.baseProduction;
 
-  // 게임 상태 업데이트 (초당 생산)
+  const tokenRate =
+    gameState.tokenConverters > 0 && gameState.bytes >= TOKEN_CONVERTER_CONFIG.bytesPerToken
+      ? gameState.tokenConverters * (1 / TOKEN_CONVERTER_CONFIG.bytesPerToken) * byteRate
+      : gameState.tokenConverters > 0
+        ? Math.min(gameState.bytes, byteRate) / TOKEN_CONVERTER_CONFIG.bytesPerToken
+        : 0;
+
+  // Game tick
   useEffect(() => {
-    const gameLoop = () => {
+    const tick = () => {
       const now = Date.now();
-      const delta = (now - lastTickRef.current) / 1000;
+      const delta = Math.min((now - lastTickRef.current) / 1000, 1);
       lastTickRef.current = now;
 
-      const produced = productionRate * delta;
+      setGameState(prev => {
+        let bytes = prev.bytes;
+        let totalBytes = prev.totalBytes;
+        let tokens = prev.tokens;
+        let totalTokens = prev.totalTokens;
+        let changed = false;
 
-      if (produced > 0) {
-        setGameState(prev => ({
-          ...prev,
-          bytes: prev.bytes + produced,
-          totalBytes: prev.totalBytes + produced
-        }));
-      }
+        // Byte production
+        const produced =
+          prev.wordCollectors * COLLECTOR_CONFIG.word.baseProduction +
+          prev.sentenceCollectors * COLLECTOR_CONFIG.sentence.baseProduction +
+          prev.textCollectors * COLLECTOR_CONFIG.text.baseProduction;
+
+        if (produced > 0) {
+          bytes += produced * delta;
+          totalBytes += produced * delta;
+          changed = true;
+        }
+
+        // Token conversion
+        if (prev.tokenConverters > 0 && bytes >= TOKEN_CONVERTER_CONFIG.bytesPerToken * delta) {
+          const convertible = Math.min(
+            bytes,
+            prev.tokenConverters * (produced * delta / TOKEN_CONVERTER_CONFIG.bytesPerToken)
+          );
+          const tokensProduced = Math.max(0, convertible / TOKEN_CONVERTER_CONFIG.bytesPerToken);
+          if (tokensProduced > 0) {
+            bytes -= tokensProduced * TOKEN_CONVERTER_CONFIG.bytesPerToken;
+            tokens += tokensProduced;
+            totalTokens += tokensProduced;
+            changed = true;
+          }
+        }
+
+        if (!changed) return prev;
+
+        // Check milestones
+        const newUnlocks = checkMilestoneUnlocks(
+          prev.unlockedMilestones,
+          totalBytes,
+          totalTokens
+        );
+
+        if (newUnlocks.length > 0) {
+          const updatedMilestones = [...prev.unlockedMilestones, ...newUnlocks];
+          setMilestoneQueue(q => [...q, ...newUnlocks]);
+          return {
+            ...prev,
+            bytes,
+            totalBytes,
+            tokens,
+            totalTokens,
+            unlockedMilestones: updatedMilestones,
+          };
+        }
+
+        return { ...prev, bytes, totalBytes, tokens, totalTokens };
+      });
     };
 
-    const interval = setInterval(gameLoop, 100);
+    const interval = setInterval(tick, 100);
     return () => clearInterval(interval);
-  }, [productionRate]);
+  }, []);
 
-  // 로그 추가
-  const addLog = useCallback((logEntry) => {
-    setLogs(prev => {
-      const elapsed = Math.floor((Date.now() - gameState.startTime) / 1000);
-      const timestamp = formatTime(elapsed);
-      const newLog = { ...logEntry, timestamp, id: Date.now() };
-      const updated = [...prev, newLog];
-
-      return updated.slice(-100);
-    });
-  }, [gameState.startTime]);
-
-  // 랜덤 로그 생성
+  // Auto-buy tick
   useEffect(() => {
-    const logLoop = () => {
-      if (Math.random() < 0.3) {
-        const { type, message } = getRandomLog();
-        addLog({ type, message });
-      }
+    const autoBuyTick = () => {
+      setGameState(prev => {
+        let updated = { ...prev };
+
+        for (const type of ['word', 'sentence', 'text']) {
+          const key = `autoBuy${type.charAt(0).toUpperCase() + type.slice(1)}`;
+          if (!prev[key]) continue;
+
+          const costKey = `${type}Cost`;
+          const countKey = `${type}Collectors`;
+          const config = COLLECTOR_CONFIG[type];
+
+          if (updated.bytes >= updated[costKey]) {
+            updated.bytes -= updated[costKey];
+            updated[countKey] += 1;
+            updated[costKey] = calculatePrice(config.baseCost, updated[countKey], config.costGrowth);
+          }
+        }
+
+        return updated;
+      });
     };
 
-    const interval = setInterval(logLoop, 5000);
+    const interval = setInterval(autoBuyTick, 1000);
     return () => clearInterval(interval);
-  }, [addLog]);
+  }, []);
 
-  // 수동 수집
-  const onManualCollect = useCallback(() => {
+  // Manual collect for a collector type
+  const onCollect = useCallback((type) => {
+    const config = COLLECTOR_CONFIG[type];
+    if (!config) return;
+
     setGameState(prev => ({
       ...prev,
-      bytes: prev.bytes + 1,
-      totalBytes: prev.totalBytes + 1,
-      manualClicks: prev.manualClicks + 1
+      bytes: prev.bytes + config.clickValue,
+      totalBytes: prev.totalBytes + config.clickValue,
+      manualClicks: prev.manualClicks + 1,
     }));
 
-    if (Math.random() < 0.1) {
-      const { type, message } = getRandomLog();
-      addLog({ type, message });
-    }
-  }, [addLog]);
+    // Check milestones after collect
+    setGameState(prev => {
+      const newUnlocks = checkMilestoneUnlocks(
+        prev.unlockedMilestones,
+        prev.totalBytes,
+        prev.totalTokens
+      );
+      if (newUnlocks.length > 0) {
+        setMilestoneQueue(q => [...q, ...newUnlocks]);
+        return { ...prev, unlockedMilestones: [...prev.unlockedMilestones, ...newUnlocks] };
+      }
+      return prev;
+    });
+  }, []);
 
-  // 크롤러 구매
-  const onBuyCrawler = useCallback(() => {
-    if (gameState.bytes >= gameState.crawlerCost) {
-      setGameState(prev => {
-        const newState = {
+  // Buy collector
+  const onBuyCollector = useCallback((type) => {
+    setGameState(prev => {
+      const config = COLLECTOR_CONFIG[type];
+      const costKey = `${type}Cost`;
+      const countKey = `${type}Collectors`;
+
+      if (prev.bytes < prev[costKey]) return prev;
+
+      const newCount = prev[countKey] + 1;
+      return {
+        ...prev,
+        bytes: prev.bytes - prev[costKey],
+        [countKey]: newCount,
+        [costKey]: calculatePrice(config.baseCost, newCount, config.costGrowth),
+      };
+    });
+  }, []);
+
+  // Buy token converter
+  const onBuyTokenConverter = useCallback(() => {
+    setGameState(prev => {
+      if (prev.tokens < prev.tokenConverterCost) return prev;
+
+      const newCount = prev.tokenConverters + 1;
+      return {
+        ...prev,
+        tokens: prev.tokens - prev.tokenConverterCost,
+        tokenConverters: newCount,
+        tokenConverterCost: calculatePrice(TOKEN_CONVERTER_CONFIG.autoBuyCost, newCount, 1.2),
+      };
+    });
+  }, []);
+
+  // Buy auto-buy for a collector
+  const onBuyAutoBuy = useCallback((type) => {
+    const config = COLLECTOR_CONFIG[type];
+    const key = `autoBuy${type.charAt(0).toUpperCase() + type.slice(1)}`;
+    const purchasedKey = `${key}Purchased`;
+
+    setGameState(prev => {
+      if (prev.tokens < config.autoBuyCost || prev[purchasedKey]) return prev;
+
+      return {
+        ...prev,
+        tokens: prev.tokens - config.autoBuyCost,
+        [key]: true,
+        [purchasedKey]: true,
+      };
+    });
+  }, []);
+
+  // Toggle auto-buy
+  const onToggleAutoBuy = useCallback((type) => {
+    const key = `autoBuy${type.charAt(0).toUpperCase() + type.slice(1)}`;
+    const purchasedKey = `${key}Purchased`;
+
+    setGameState(prev => {
+      if (!prev[purchasedKey]) return prev;
+      return { ...prev, [key]: !prev[key] };
+    });
+  }, []);
+
+  // Dismiss milestone notification
+  const onDismissMilestone = useCallback(() => {
+    setMilestoneQueue(q => q.slice(1));
+  }, []);
+
+  // Complete intro
+  const onCompleteIntro = useCallback(() => {
+    setGameState(prev => {
+      if (prev.introComplete) return prev;
+
+      const newUnlocks = checkMilestoneUnlocks(
+        prev.unlockedMilestones,
+        prev.totalBytes,
+        prev.totalTokens
+      );
+      if (newUnlocks.length > 0) {
+        setMilestoneQueue(q => [...q, ...newUnlocks]);
+        return {
           ...prev,
-          bytes: prev.bytes - prev.crawlerCost,
-          crawlers: prev.crawlers + 1,
-          crawlerCost: calculatePrice(
-            PRODUCTION_CONFIG.crawler.baseCost,
-            prev.crawlers + 1,
-            PRICE_GROWTH
-          )
+          introComplete: true,
+          unlockedMilestones: [...prev.unlockedMilestones, ...newUnlocks],
         };
+      }
+      return { ...prev, introComplete: true };
+    });
+  }, []);
 
-        addLog({
-          type: LOG_TYPES.SYSTEM,
-          message: `크롤러 봇 모듈 설치 완료 | 총 ${newState.crawlers}개 활성`
-        });
-
-        return newState;
-      });
-    }
-  }, [gameState.bytes, gameState.crawlerCost, addLog]);
-
-  // 서버 구매
-  const onBuyServer = useCallback(() => {
-    if (gameState.bytes >= gameState.serverCost) {
-      setGameState(prev => {
-        const newState = {
-          ...prev,
-          bytes: prev.bytes - prev.serverCost,
-          servers: prev.servers + 1,
-          serverCost: calculatePrice(
-            PRODUCTION_CONFIG.server.baseCost,
-            prev.servers + 1,
-            PRICE_GROWTH
-          )
-        };
-
-        addLog({
-          type: LOG_TYPES.SYSTEM,
-          message: `서버 랙 증설 완료 | 총 ${newState.servers}개 운영 중`
-        });
-
-        return newState;
-      });
-    }
-  }, [gameState.bytes, gameState.serverCost, addLog]);
-
-  // 저장/불러오기
+  // Save/load
   useEffect(() => {
     const saved = localStorage.getItem(SAVE_KEY);
     if (saved) {
       try {
         const data = JSON.parse(saved);
         setGameState(prev => ({ ...prev, ...data }));
-        addLog({
-          type: LOG_TYPES.SYSTEM,
-          message: '시스템 복원 완료 | 저장된 데이터 로드됨'
-        });
+        lastTickRef.current = Date.now();
       } catch (e) {
-        console.error('불러오기 실패:', e);
+        console.error('Load failed:', e);
       }
-    } else {
-      addLog({
-        type: LOG_TYPES.SYSTEM,
-        message: '시스템 온라인 | 모든 모듈 정상 작동'
-      });
     }
   }, []);
 
-  // 자동 저장
   useEffect(() => {
-    const saveGame = () => {
+    const save = () => {
       try {
         localStorage.setItem(SAVE_KEY, JSON.stringify(gameState));
-        setAutoSaveStatus('완료');
-        setTimeout(() => setAutoSaveStatus('대기'), 2000);
+        setSaveVisible(true);
+        setTimeout(() => setSaveVisible(false), 1500);
       } catch (e) {
-        setAutoSaveStatus('오류');
-        console.error('저장 실패:', e);
+        console.error('Save failed:', e);
       }
     };
-
-    const interval = setInterval(saveGame, 30000);
+    const interval = setInterval(save, 30000);
     return () => clearInterval(interval);
   }, [gameState]);
 
-  // 가동 시간 업데이트
-  const uptime = Math.floor((Date.now() - gameState.startTime) / 1000);
+  const isUnlocked = useCallback(
+    (milestoneKey) => gameState.unlockedMilestones.includes(milestoneKey),
+    [gameState.unlockedMilestones]
+  );
+
+  const currentMilestone = milestoneQueue.length > 0 ? MILESTONES[milestoneQueue[0]] : null;
 
   const enhancedState = {
     ...gameState,
-    productionRate,
-    uptime,
-    autoSaveStatus
+    byteRate,
+    tokenRate,
+    canBuyWord: gameState.bytes >= gameState.wordCost,
+    canBuySentence: gameState.bytes >= gameState.sentenceCost,
+    canBuyText: gameState.bytes >= gameState.textCost,
+    canBuyTokenConverter: gameState.tokens >= gameState.tokenConverterCost,
+    canBuyAutoWord:
+      !gameState.autoBuyWordPurchased && gameState.tokens >= COLLECTOR_CONFIG.word.autoBuyCost,
+    canBuyAutoSentence:
+      !gameState.autoBuySentencePurchased && gameState.tokens >= COLLECTOR_CONFIG.sentence.autoBuyCost,
+    canBuyAutoText:
+      !gameState.autoBuyTextPurchased && gameState.tokens >= COLLECTOR_CONFIG.text.autoBuyCost,
+    uptime: Math.floor((Date.now() - gameState.startTime) / 1000),
   };
 
   return {
     gameState: enhancedState,
-    logs,
-    onManualCollect,
-    onBuyCrawler,
-    onBuyServer
+    currentMilestone,
+    saveVisible,
+    isUnlocked,
+    onCollect,
+    onBuyCollector,
+    onBuyTokenConverter,
+    onBuyAutoBuy,
+    onToggleAutoBuy,
+    onDismissMilestone,
+    onCompleteIntro,
   };
 }
